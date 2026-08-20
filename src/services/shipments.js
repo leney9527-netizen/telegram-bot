@@ -138,7 +138,7 @@ function formatTrackingReply(result, input) {
   }
 
   if (result.needSupport) {
-    return `快递单号 ${result.trackingNumber} 对应唛头为无唛头，请联系客服处理。`;
+    return `快递单号 ${result.trackingNumber} 对应唛头为无唛头，请联系客服处理@vip666005。`;
   }
 
   const detailLines = result.sameDayRows.map((row, index) => formatRowLine(row, index));
