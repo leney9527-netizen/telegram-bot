@@ -4,11 +4,11 @@
 
 ## 功能
 
-- 文本消息接收与回显
+- 跨境发货查询：只使用最新业务表格转换后的 JSON
+- 业务表格命名：`YYYY-MM-DD发货快递单.csv`（也支持 `.xls` / `.xlsx`）
+- 北京时间每天下午 18:00 核对当天表格是否已更新并重新转换 JSON
+- 同一唛头只返回被查询单号对应发货日期的全部记录；唛头为「无唛头」时提示联系客服
 - 命令：`/start`、`/help`、`/about`、`/echo`、`/menu`、`/inline`、`/hide`
-- 回复键盘（主菜单）与内联键盘（点赞 / 统计）
-- 全局错误捕获，避免单次失败导致进程退出
-- 结构化日志（可通过 `LOG_LEVEL` 调整）
 
 ## 环境要求
 
@@ -64,19 +64,53 @@ npm run dev
 npm start
 ```
 
-启动成功后日志中会看到「机器人已以 long polling 模式启动」。在 Telegram 中向机器人发送 `/start` 即可使用。
+启动成功后，把当天业务表放到 `data/`，文件名必须同时包含**当天日期**和**发货快递单**，例如：
+
+```
+2026-08-20发货快递单.csv
+```
+
+启动时会读取日期最新的表格，转换成 `data/shipments.json`。之后所有单号查询、唛头重量和泰铢汇总都只读这份 JSON。
+
+手动转换：
+
+```bash
+npm run ingest
+```
+
+北京时间每天下午 18:00 会核对「当天日期+发货快递单」文件是否存在：已更新则重新转 JSON；未找到则写告警日志，并继续使用上一份 JSON，不会编造数据。
+
+重新生成模拟发货表（会写入当天日期命名的 csv，仍需 ingest）：
+
+```bash
+npm run seed
+npm run ingest
+```
 
 ## 代码结构
 
 ```
 telegram-bot/
+├── data/
+│   ├── YYYY-MM-DD发货快递单.csv  # 每日更新的业务表格
+│   └── shipments.json           # 由最新表格转换，查询唯一数据源
+├── scripts/
+│   └── generate-shipments.js    # 生成模拟数据
 ├── src/
 │   ├── index.js                 # 入口：创建 Bot、启动、优雅退出
 │   ├── config.js                # 读取并校验环境变量
 │   ├── logger.js                # pino 日志
 │   ├── keyboards.js             # 回复键盘 / 内联键盘
+│   ├── services/
+│   │   ├── ingest.js            # 最新表格转 JSON
+│   │   ├── tableFiles.js        # 按文件名识别业务表
+│   │   ├── tableParser.js       # 解析 csv/xls/xlsx
+│   │   └── shipments.js         # 仅基于 JSON 的查询
+│   ├── jobs/
+│   │   └── dailyTableCheck.js   # 北京时间 18:00 核对当日表格
 │   ├── handlers/
 │   │   ├── commands.js          # 命令处理
+│   │   ├── tracking.js          # 快递单号查询
 │   │   ├── text.js              # 文本与菜单按钮
 │   │   └── callbacks.js         # 内联按钮回调
 │   └── middlewares/

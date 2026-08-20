@@ -6,7 +6,10 @@
   "type": "commonjs",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "dev": "node --watch src/index.js",
+    "seed": "node scripts/generate-shipments.js",
+    "export-table": "node scripts/export-shipment-tables.js",
+    "ingest": "node scripts/ingest-latest-table.js"
   },
   "engines": {
     "node": ">=18"
@@ -15,8 +18,10 @@
   "license": "MIT",
   "dependencies": {
     "dotenv": "^16.4.7",
+    "node-cron": "^3.0.3",
     "pino": "^9.6.0",
     "pino-pretty": "^13.0.0",
-    "telegraf": "^4.16.3"
+    "telegraf": "^4.16.3",
+    "xlsx": "^0.18.5"
   }
 }

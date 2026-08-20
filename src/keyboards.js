@@ -2,7 +2,7 @@ const { Markup } = require("telegraf");
 
 function mainMenuKeyboard() {
   return Markup.keyboard([
-    ["功能介绍", "发送示例"],
+    ["查件说明", "示例单号"],
     ["帮助", "关于"],
   ]).resize();
 }

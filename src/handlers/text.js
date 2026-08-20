@@ -1,22 +1,24 @@
-const { logger } = require("../logger");
-const { HELP_TEXT } = require("./commands");
-const { inlineDemoKeyboard } = require("../keyboards");
+const { getHelpText } = require("./commands");
+const { sampleTrackingNumbers } = require("../services/shipments");
 
 function registerTextHandlers(bot) {
-  bot.hears("功能介绍", async (ctx) => {
-    await ctx.reply(HELP_TEXT);
+  bot.hears("查件说明", async (ctx) => {
+    await ctx.reply(getHelpText());
   });
 
-  bot.hears("发送示例", async (ctx) => {
-    await ctx.reply("点击下面的按钮试试内联交互：", inlineDemoKeyboard());
+  bot.hears("示例单号", async (ctx) => {
+    const samples = sampleTrackingNumbers(8);
+    await ctx.reply(`可直接复制发送以下模拟单号查询：\n${samples.join("\n")}`);
   });
 
   bot.hears("帮助", async (ctx) => {
-    await ctx.reply(HELP_TEXT);
+    await ctx.reply(getHelpText());
   });
 
   bot.hears("关于", async (ctx) => {
-    await ctx.reply("基于 Telegraf 的 Node.js Telegram 机器人示例。");
+    await ctx.reply(
+      "跨境发货查询机器人：按快递单号检索状态，并汇总同一唛头当天的重量与泰铢收款。"
+    );
   });
 
   bot.on("text", async (ctx) => {
@@ -25,8 +27,7 @@ function registerTextHandlers(bot) {
       return;
     }
 
-    logger.info({ userId: ctx.from.id, text: ctx.message.text }, "收到文本消息");
-    await ctx.reply(`收到：${ctx.message.text}\n\n提示：发送 /help 查看更多功能。`);
+    await ctx.reply("请发送快递单号查询（仅数字和大小写字母）。发送 /help 查看说明。");
   });
 }
 

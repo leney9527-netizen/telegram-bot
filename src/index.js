@@ -4,8 +4,11 @@ const { logger } = require("./logger");
 const { loggingMiddleware } = require("./middlewares/logging");
 const { errorHandler } = require("./middlewares/errorHandler");
 const { registerCommands } = require("./handlers/commands");
+const { registerTrackingHandler } = require("./handlers/tracking");
 const { registerTextHandlers } = require("./handlers/text");
 const { registerCallbacks } = require("./handlers/callbacks");
+const { ingestLatestTable } = require("./services/ingest");
+const { startDailyTableCheck } = require("./jobs/dailyTableCheck");
 
 function createBot() {
   const bot = new Telegraf(config.botToken);
@@ -15,6 +18,7 @@ function createBot() {
 
   registerCommands(bot);
   registerCallbacks(bot);
+  registerTrackingHandler(bot);
   registerTextHandlers(bot);
 
   return bot;
@@ -40,7 +44,14 @@ async function launch(bot) {
 
 async function main() {
   validateConfig();
+  try {
+    ingestLatestTable();
+  } catch (err) {
+    logger.error({ err }, "启动时转换最新表格失败，将尝试使用已有 JSON");
+  }
+
   const bot = createBot();
+  startDailyTableCheck();
 
   process.once("SIGINT", () => {
     logger.info("收到 SIGINT，正在停止");
