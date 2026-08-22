@@ -39,11 +39,25 @@ function splitTelegramText(text) {
   return chunks;
 }
 
-async function replyLongText(ctx, text) {
+async function replyLongText(ctx, text, extra = {}) {
   const chunks = splitTelegramText(text);
   for (const chunk of chunks) {
-    await ctx.reply(chunk);
+    await ctx.reply(chunk, extra);
   }
 }
 
-module.exports = { splitTelegramText, replyLongText };
+function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+async function replyHtml(ctx, html) {
+  const chunks = splitTelegramText(html);
+  for (const chunk of chunks) {
+    await ctx.reply(chunk, { parse_mode: "HTML" });
+  }
+}
+
+module.exports = { splitTelegramText, replyLongText, escapeHtml, replyHtml };

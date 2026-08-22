@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const { logger } = require("../logger");
 const { JSON_OUTPUT_NAME } = require("../constants/shipmentFields");
+const { parseTrackingNumbers, isTrackingQuery } = require("../utils/trackingInput");
 
 const DATA_FILE = path.resolve(__dirname, "..", "..", "data", JSON_OUTPUT_NAME);
 
@@ -54,10 +55,6 @@ function reloadShipments() {
   return loadShipments();
 }
 
-function isTrackingQuery(text) {
-  return /^[A-Za-z0-9]+$/.test(text);
-}
-
 function round2(n) {
   return Math.round(n * 100) / 100;
 }
@@ -76,42 +73,97 @@ function summarizeRows(rows) {
   const totalWeight = round2(
     rows.reduce((sum, row) => sum + Number(row.实际计算重量 || 0), 0)
   );
-  const summedThb = round2(
+  const totalThb = round2(
     rows.reduce((sum, row) => sum + Number(row.实际收款泰铢 || 0), 0)
   );
-  const totalThb = summedThb < 50 ? 50 : summedThb;
-  return { totalWeight, totalThb };
+  const totalQty = rows.reduce((sum, row) => sum + Number(row.件数 || 0), 0);
+  return { totalWeight, totalThb, totalQty };
 }
 
-function queryByTrackingNumber(input) {
-  const record = findByTrackingNumber(input);
-  if (!record) {
-    return { found: false };
+function sharedStatus(rows) {
+  const values = [];
+  const seen = new Set();
+  for (const row of rows) {
+    const status = String(row.快递状态 ?? "").trim();
+    if (!status || seen.has(status)) {
+      continue;
+    }
+    seen.add(status);
+    values.push(status);
+  }
+  return values.join("、");
+}
+
+function queryTrackingNumbers(inputs) {
+  const numbers = parseTrackingNumbers(Array.isArray(inputs) ? inputs.join(" ") : String(inputs || ""));
+  const missing = [];
+  const needSupport = [];
+  const found = [];
+
+  for (const input of numbers) {
+    const record = findByTrackingNumber(input);
+    if (!record) {
+      missing.push(input);
+      continue;
+    }
+    if (isMissingMark(record.唛头)) {
+      needSupport.push(record.快递单号);
+      continue;
+    }
+    found.push(record);
   }
 
-  if (isMissingMark(record.唛头)) {
-    return {
-      found: true,
-      needSupport: true,
-      trackingNumber: record.快递单号,
-      mark: String(record.唛头 ?? "").trim() || "无唛头",
-    };
+  const groups = [];
+  const seen = new Set();
+  for (const record of found) {
+    const key = `${record.唛头}\0${record.发货日期}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    const sameDayRows = rowsForMarkAndDate(record.唛头, record.发货日期);
+    const { totalWeight, totalThb, totalQty } = summarizeRows(sameDayRows);
+    groups.push({
+      mark: record.唛头,
+      shipDate: record.发货日期,
+      status: sharedStatus(sameDayRows),
+      sameDayRows,
+      totalWeight,
+      totalThb,
+      totalQty,
+    });
   }
 
-  const sameDayRows = rowsForMarkAndDate(record.唛头, record.发货日期);
-  const { totalWeight, totalThb } = summarizeRows(sameDayRows);
+  return { missing, needSupport, groups };
+}
 
-  return {
-    found: true,
-    needSupport: false,
-    trackingNumber: record.快递单号,
-    status: record.快递状态,
-    mark: record.唛头,
-    shipDate: record.发货日期,
-    sameDayRows,
-    totalWeight,
-    totalThb,
-  };
+function formatGroupTable(group) {
+  const lines = [];
+  if (group.mark !== undefined && group.mark !== "") {
+    lines.push(`唛头：${group.mark}`);
+  }
+  if (group.shipDate !== undefined && group.shipDate !== "") {
+    lines.push(`发货日期：${group.shipDate}`);
+  }
+  if (group.status) {
+    lines.push(`快递状态：${group.status}`);
+  }
+  lines.push("");
+
+  for (const row of group.sameDayRows) {
+    lines.push("----------");
+    lines.push(`单号：${row.快递单号 ?? ""}`);
+    lines.push(`品名：${row.品名 ?? ""}`);
+    lines.push(`件数：${row.件数 ?? ""}`);
+    lines.push(`实际计算重量：${row.实际计算重量 ?? ""} KG`);
+    lines.push(`实际收款泰铢：${row.实际收款泰铢 ?? ""}`);
+  }
+
+  lines.push("----------");
+  lines.push(`今日发货总重量：${group.totalWeight} KG`);
+  lines.push(`今日收款总金额：${group.totalThb} 泰铢`);
+  lines.push(`今日发货总数量：${group.totalQty}`);
+  return lines.join("\n");
 }
 
 function sampleTrackingNumbers(limit = 5) {
@@ -121,39 +173,31 @@ function sampleTrackingNumbers(limit = 5) {
     .map((row) => row.快递单号);
 }
 
-function formatRowLine(row, index) {
-  return [
-    `${index + 1}. 快递单号 ${row.快递单号}`,
-    `品名 ${row.品名}`,
-    `件数 ${row.件数}`,
-    `实际计算重量 ${row.实际计算重量} KG`,
-    `实际收款泰铢 ${row.实际收款泰铢}`,
-    `快递状态 ${row.快递状态}`,
-  ].join("，");
-}
+function formatTrackingReply(result) {
+  const parts = [];
 
-function formatTrackingReply(result, input) {
-  if (!result.found) {
-    return `未查询到快递单号 ${input} 的记录，请核对后重试。`;
+  if (result.missing && result.missing.length) {
+    if ((!result.groups || result.groups.length === 0) && (!result.needSupport || result.needSupport.length === 0)) {
+      parts.push("抱歉亲，没有查到记录，请联系客服处理: @vip666005");
+    } else {
+      parts.push(`未查询到记录的快递单号：${result.missing.join("、")}`);
+    }
   }
 
-  if (result.needSupport) {
-    return `快递单号 ${result.trackingNumber} 对应唛头为无唛头，请联系客服处理@vip666005。`;
+  if (result.needSupport && result.needSupport.length) {
+    parts.push(
+      `快递单号 ${result.needSupport.join("、")} 对应唛头为无唛头，请联系客服处理：https://t.me/vip666005`
+    );
   }
 
-  const detailLines = result.sameDayRows.map((row, index) => formatRowLine(row, index));
-  return [
-    `快递单号 ${result.trackingNumber} 当前状态为：${result.status}。`,
-    `对应唛头：${result.mark}。`,
-    `该单号对应发货日期：${result.shipDate}。以下为该唛头在该日期的全部记录：`,
-    ...detailLines,
-    `该唛头当日发货总重量为 ${result.totalWeight} KG，当日收款总金额为 ${result.totalThb} 泰铢。`,
-  ].join("\n");
+  const groupTexts = (result.groups || []).map((group) => formatGroupTable(group));
+  return [...parts, ...groupTexts].join("\n\n");
 }
 
 module.exports = {
   isTrackingQuery,
-  queryByTrackingNumber,
+  parseTrackingNumbers,
+  queryTrackingNumbers,
   sampleTrackingNumbers,
   formatTrackingReply,
   loadShipments,

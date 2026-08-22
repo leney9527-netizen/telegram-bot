@@ -155,24 +155,44 @@ function decodeCsvBuffer(buf) {
   return utf8;
 }
 
-function parseTableFile(filePath) {
+function readTableMatrix(filePath) {
   const lower = filePath.toLowerCase();
-  let parsed;
   if (lower.endsWith(".csv")) {
-    parsed = parseCsv(decodeCsvBuffer(fs.readFileSync(filePath)));
-  } else if (lower.endsWith(".xls")) {
+    return parseCsv(decodeCsvBuffer(fs.readFileSync(filePath)));
+  }
+  if (lower.endsWith(".xls")) {
     const content = fs.readFileSync(filePath, "utf8");
     if (content.includes("urn:schemas-microsoft-com:office:spreadsheet")) {
-      parsed = parseExcelXml(content);
-    } else {
-      parsed = parseXlsx(filePath);
+      return parseExcelXml(content);
     }
-  } else if (lower.endsWith(".xlsx")) {
-    parsed = parseXlsx(filePath);
-  } else {
-    throw new Error(`不支持的表格格式：${filePath}`);
+    return parseXlsx(filePath);
   }
+  if (lower.endsWith(".xlsx")) {
+    return parseXlsx(filePath);
+  }
+  throw new Error(`不支持的表格格式：${filePath}`);
+}
+
+function parseTableFile(filePath) {
+  const parsed = readTableMatrix(filePath);
   return matrixToObjects(parsed.headers, parsed.rows);
 }
 
-module.exports = { parseTableFile };
+function parseFlexibleTable(filePath) {
+  const parsed = readTableMatrix(filePath);
+  const headers = parsed.headers;
+  return parsed.rows
+    .filter((row) => (row || []).some((cell) => String(cell ?? "").trim() !== ""))
+    .map((row) => {
+      const item = {};
+      headers.forEach((header, index) => {
+        if (!header) {
+          return;
+        }
+        item[header] = String(row[index] ?? "").trim();
+      });
+      return item;
+    });
+}
+
+module.exports = { parseTableFile, parseFlexibleTable };

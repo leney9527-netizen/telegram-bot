@@ -6,7 +6,6 @@ const { errorHandler } = require("./middlewares/errorHandler");
 const { registerCommands } = require("./handlers/commands");
 const { registerTrackingHandler } = require("./handlers/tracking");
 const { registerTextHandlers } = require("./handlers/text");
-const { registerCallbacks } = require("./handlers/callbacks");
 const { ingestLatestTable } = require("./services/ingest");
 const { startDailyTableCheck } = require("./jobs/dailyTableCheck");
 
@@ -17,7 +16,6 @@ function createBot() {
   bot.use(loggingMiddleware());
 
   registerCommands(bot);
-  registerCallbacks(bot);
   registerTrackingHandler(bot);
   registerTextHandlers(bot);
 
@@ -25,6 +23,8 @@ function createBot() {
 }
 
 async function launch(bot) {
+  await bot.telegram.setMyCommands([]);
+
   if (config.mode === "webhook") {
     const { domain, path, port } = config.webhook;
     await bot.launch({
