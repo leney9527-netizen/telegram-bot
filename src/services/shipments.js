@@ -80,11 +80,19 @@ function summarizeRows(rows) {
   return { totalWeight, totalThb, totalQty };
 }
 
+function arrivalStatus(row) {
+  const fromArrival = String(row.到货状态 ?? "").trim();
+  if (fromArrival) {
+    return fromArrival;
+  }
+  return String(row.快递状态 ?? "").trim();
+}
+
 function sharedStatus(rows) {
   const values = [];
   const seen = new Set();
   for (const row of rows) {
-    const status = String(row.快递状态 ?? "").trim();
+    const status = arrivalStatus(row);
     if (!status || seen.has(status)) {
       continue;
     }
@@ -107,7 +115,10 @@ function queryTrackingNumbers(inputs) {
       continue;
     }
     if (isMissingMark(record.唛头)) {
-      needSupport.push(record.快递单号);
+      needSupport.push({
+        trackingNumber: record.快递单号,
+        status: arrivalStatus(record),
+      });
       continue;
     }
     found.push(record);
@@ -185,9 +196,16 @@ function formatTrackingReply(result) {
   }
 
   if (result.needSupport && result.needSupport.length) {
-    parts.push(
-      `快递单号 ${result.needSupport.join("、")} 对应唛头为无唛头，请联系客服处理：https://t.me/vip666005`
-    );
+    const supportLines = result.needSupport.map((item) => {
+      const trackingNumber = typeof item === "string" ? item : item.trackingNumber;
+      const status = typeof item === "string" ? "" : String(item.status || "").trim();
+      const lines = [`快递单号 ${trackingNumber} 对应唛头为无唛头，请联系客服处理：https://t.me/vip666005`];
+      if (status) {
+        lines.push(`到货状态：${status}`);
+      }
+      return lines.join("\n");
+    });
+    parts.push(supportLines.join("\n\n"));
   }
 
   const groupTexts = (result.groups || []).map((group) => formatGroupTable(group));
